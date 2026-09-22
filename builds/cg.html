@@ -1046,6 +1046,8 @@
         ruido = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
         const d = ruido.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       }
+      // iPhone/iPad (Safari 16.4+): tocar como "reprodução" para não ficar mudo com o botão de silêncio
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
       if (ctx.state !== 'running') { try { ctx.resume(); } catch (e) {} }
       if (!desbloqueado) {
         try { const b = ctx.createBufferSource(); b.buffer = ctx.createBuffer(1, 1, 22050); b.connect(ctx.destination); b.start(0); desbloqueado = true; } catch (e) {}

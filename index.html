@@ -150,6 +150,8 @@
     border: 2px solid var(--tinta-suave); border-bottom-width: 3px; border-radius: 6px;
     padding: 0 5px; background: #fff;
   }
+  .somBtn { display: inline-flex; align-items: center; justify-content: center; padding: 3px 8px; align-self: center; }
+  .somBtn[aria-pressed="false"] { color: var(--tinta-suave); }
   .lingua { display: inline-flex; border: 2px solid var(--tinta); border-radius: 999px; overflow: hidden; align-self: center; }
   .lingua button {
     font-family: var(--display); font-weight: 600; font-size: .78rem; letter-spacing: .04em;
@@ -171,6 +173,7 @@
       <span><span id="rotPontos">Pontos</span><b id="pontos">0</b></span>
       <span><span id="rotRecorde">Recorde</span><b id="recorde">0</b></span>
       <span class="vidas" id="vidas" aria-label="3 vidas">♥♥♥</span>
+      <button class="mini somBtn" id="btnSom" type="button" aria-pressed="true" aria-label="Som"></button>
       <span class="lingua" role="group" aria-label="Língua / Language"><button type="button" id="btnPT" lang="pt-PT">PT</button><button type="button" id="btnEN" lang="en">EN</button></span>
     </div>
   </header>
@@ -1028,14 +1031,161 @@
     if (n > desbloqueadas) { desbloqueadas = Math.min(FASES.length, n); guarda.set('fofo-fases', desbloqueadas); }
   }
 
+  // ---------- som (tudo sintetizado com Web Audio: sem ficheiros nem música de terceiros) ----------
+  const Som = (() => {
+    let ctx = null, mestre, gSfx, gMus, ruido;
+    let ligado = guarda.get('fofo-som') !== '0';
+    let emAnuncio = false, mudoSDK = false;
+    let musFase = null, prox = 0, passo = 0, timer = null, bolhaT = 0, tickSeg = -1;
+    const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+    const volume = () => (ligado && !emAnuncio && !mudoSDK && !document.hidden) ? 1 : 0;
+    function aplica() { if (ctx) mestre.gain.setTargetAtTime(volume(), ctx.currentTime, .05); botao(); }
+
+    function desbloqueia() {
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        ctx = new AC();
+        mestre = ctx.createGain(); mestre.gain.value = 0; mestre.connect(ctx.destination);
+        gSfx = ctx.createGain(); gSfx.gain.value = .5; gSfx.connect(mestre);
+        gMus = ctx.createGain(); gMus.gain.value = .16; gMus.connect(mestre);
+        ruido = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+        const d = ruido.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+      aplica();
+    }
+
+    function nota(freq, t, dur, tipo = 'sine', vol = .3, destino = gSfx, desliza = 0) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = tipo; o.frequency.setValueAtTime(freq, t);
+      if (desliza) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * desliza), t + dur);
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g); g.connect(destino); o.start(t); o.stop(t + dur + .02);
+    }
+    function sopro(t, dur, vol, freq, destino = gSfx, filtro = 'lowpass', freqFim = 0) {
+      const f = ctx.createBiquadFilter(), g = ctx.createGain(), src = ctx.createBufferSource();
+      src.buffer = ruido; f.type = filtro; f.frequency.setValueAtTime(freq, t);
+      if (freqFim) f.frequency.exponentialRampToValueAtTime(freqFim, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      src.connect(f); f.connect(g); g.connect(destino); src.start(t); src.stop(t + dur + .02);
+    }
+    const agora = () => ctx && ctx.currentTime;
+    const seq = (notas, dt, dur, tipo, vol) => { const t = agora(); notas.forEach((m, i) => nota(midi(m), t + i * dt, dur, tipo, vol)); };
+
+    const efeitos = {
+      apanha(combo) { const t = agora(), b = 76 + Math.min(combo, 8); nota(midi(b), t, .09, 'triangle', .25); nota(midi(b + 7), t + .06, .12, 'triangle', .22); },
+      naoPreciso() { nota(midi(55), agora(), .16, 'triangle', .2, gSfx, .7); },
+      perigo() { const t = agora(); sopro(t, .25, .35, 1400, gSfx, 'lowpass', 200); nota(midi(52), t, .3, 'square', .1, gSfx, .5); },
+      tudo() { seq([72, 76, 79, 84], .08, .18, 'triangle', .22); },
+      splash() { const t = agora(); sopro(t, .45, .4, 3000, gSfx, 'bandpass', 400); nota(midi(62), t, .2, 'sine', .15, gSfx, .5); },
+      bolha() { nota(midi(62 + Math.random() * 14), agora(), .08, 'sine', .07, gSfx, 1.8); },
+      pronto() { seq([72, 76, 79, 84, 88], .09, .25, 'triangle', .22); const t = agora() + .5; [96, 100, 103].forEach((m, i) => nota(midi(m), t + i * .06, .15, 'sine', .08)); },
+      fase() { seq([67, 72, 76, 79, 76, 79, 84], .12, .3, 'triangle', .22); },
+      fim() { seq([67, 64, 60, 55], .18, .32, 'triangle', .2); },
+      tick() { nota(midi(88), agora(), .04, 'square', .05); },
+      clique() { nota(midi(84), agora(), .05, 'sine', .08); },
+    };
+    const toca = nome => (...a) => { if (!ctx) return; try { efeitos[nome](...a); } catch (e) {} };
+
+    // música: progressão de 4 compassos, melodia pentatónica fixa por fase (sempre igual em cada fase)
+    const MUSICA = {
+      cozinha: { bpm: 112, raiz: 60, menor: false, timbre: 'triangle' },
+      mercado: { bpm: 118, raiz: 62, menor: false, timbre: 'square' },
+      praia:   { bpm: 104, raiz: 65, menor: false, timbre: 'triangle' },
+      arraial: { bpm: 126, raiz: 67, menor: false, timbre: 'square' },
+      sintra:  { bpm: 92,  raiz: 57, menor: true,  timbre: 'triangle' },
+      douro:   { bpm: 108, raiz: 64, menor: false, timbre: 'triangle' },
+      aveiro:  { bpm: 110, raiz: 62, menor: false, timbre: 'sine' },
+      alentejo:{ bpm: 96,  raiz: 59, menor: true,  timbre: 'triangle' },
+      acores:  { bpm: 100, raiz: 60, menor: false, timbre: 'sine' },
+      natal:   { bpm: 88,  raiz: 67, menor: false, timbre: 'sine', sinos: true },
+    };
+    const melodias = {};
+    function melodia(id) {
+      if (melodias[id]) return melodias[id];
+      let sem = [...id].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % 2147483647 || 1;
+      const r = () => (sem = (sem * 16807) % 2147483647) / 2147483647;
+      const esc = MUSICA[id].menor ? [0, 3, 5, 7, 10, 12, 15] : [0, 2, 4, 7, 9, 12, 14];
+      let g = 2; const m = [];
+      for (let i = 0; i < 32; i++) {
+        if (r() < .3 && i % 8 !== 0) { m.push(null); continue; }
+        g = Math.max(0, Math.min(esc.length - 1, g + Math.round((r() - .5) * 3)));
+        m.push(esc[g]);
+      }
+      return (melodias[id] = m);
+    }
+    function agenda(i, t) {
+      const M = MUSICA[musFase], prog = M.menor ? [0, 8, 3, 10] : [0, 7, 9, 5];
+      const compasso = Math.floor(i / 8) % 4, p = i % 8, raiz = M.raiz + prog[compasso];
+      const menorAcorde = M.menor ? compasso === 0 : compasso === 2;
+      const acorde = menorAcorde ? [0, 3, 7] : [0, 4, 7];
+      const oito = 60 / M.bpm / 2;
+      if (p === 0 || p === 4) nota(midi(raiz - 24), t, oito * 3, 'triangle', .3, gMus);
+      if (p % 2 === 0) nota(midi(raiz + acorde[(p / 2) % 3]), t, oito * .9, M.timbre, .06, gMus);
+      const m = melodia(musFase)[i % 32];
+      if (m !== null) nota(midi(M.raiz + 12 + m), t, oito * 1.6, 'triangle', .11, gMus);
+      if (p % 2 === 1) sopro(t, .04, .05, 7000, gMus, 'highpass');
+      if (p === 0) nota(midi(40), t, .14, 'sine', .25, gMus, .5);
+      if (M.sinos && p === 0) nota(midi(raiz + 24), t, .8, 'sine', .05, gMus);
+    }
+    function relogio() {
+      if (!ctx || !musFase) return;
+      const oito = 60 / MUSICA[musFase].bpm / 2;
+      while (prox < ctx.currentTime + .15) { try { agenda(passo, prox); } catch (e) {} prox += oito; passo++; }
+    }
+    function musica(id) {
+      musFase = id;
+      if (!id || !ctx) return;
+      passo = 0; prox = ctx.currentTime + .08;
+      if (!timer) timer = setInterval(relogio, 40);
+    }
+
+    // chamado em cada imagem do jogo: liga a música certa, bolhas do tacho e o tique-taque do fim do tempo
+    function quadro(dt) {
+      if (!ctx) return;
+      const quer = S.estado === 'jogo' ? faseAtual().id : null;
+      if (quer !== musFase) musica(quer);
+      if (S.estado !== 'jogo') return;
+      if (S.etapa === 'cozinhar' && (bolhaT -= dt) <= 0) { toca('bolha')(); bolhaT = .18 + Math.random() * .2; }
+      if ((S.etapa === 'apanhar' || S.etapa === 'levar') && S.tempo < 5.5 && S.tempo > 0) {
+        const seg = Math.ceil(S.tempo); if (seg !== tickSeg) { tickSeg = seg; toca('tick')(); }
+      } else tickSeg = -1;
+    }
+
+    function botao() {
+      const b = el('btnSom'); if (!b) return;
+      const on = ligado && !mudoSDK;
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', on ? L('Som ligado', 'Sound on') : L('Som desligado', 'Sound off'));
+      b.title = b.getAttribute('aria-label');
+      b.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>' +
+        (on ? '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+            : '<path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>') + '</svg>';
+    }
+    function alterna() { ligado = !ligado; guarda.set('fofo-som', ligado ? '1' : '0'); desbloqueia(); aplica(); }
+
+    addEventListener('pointerdown', desbloqueia, true);
+    addEventListener('keydown', desbloqueia, true);
+    document.addEventListener('visibilitychange', aplica);
+
+    return {
+      desbloqueia, quadro, alterna, botao,
+      anuncio(on) { emAnuncio = on; aplica(); },
+      mudoSDK(on) { mudoSDK = !!on; aplica(); },
+      apanha: toca('apanha'), naoPreciso: toca('naoPreciso'), perigo: toca('perigo'), tudo: toca('tudo'),
+      splash: toca('splash'), pronto: toca('pronto'), fase: toca('fase'), fim: toca('fim'), clique: toca('clique'),
+    };
+  })();
+
   // ---------- CrazyGames SDK (só funciona quando o jogo está no CrazyGames) ----------
   // ---------- GameDistribution SDK (só na versão para o GameDistribution) ----------
   const GD = {
     ativo: !!window.GD_OPTIONS,
     recompensa: false,
     evento(nome) {
-      if (nome === 'SDK_GAME_PAUSE' && S.estado === 'jogo') S.estado = 'anuncio';
-      else if (nome === 'SDK_GAME_START' && S.estado === 'anuncio') S.estado = 'jogo';
+      if (nome === 'SDK_GAME_PAUSE') { Som.anuncio(true); if (S.estado === 'jogo') S.estado = 'anuncio'; }
+      else if (nome === 'SDK_GAME_START') { Som.anuncio(false); if (S.estado === 'anuncio') S.estado = 'jogo'; }
       else if (nome === 'SDK_REWARDED_WATCH_COMPLETE') GD.recompensa = true;
     },
   };
@@ -1050,6 +1200,11 @@
         await window.CrazyGames.SDK.init();
         const amb = window.CrazyGames.SDK.environment;
         this.ok = amb === 'crazygames' || amb === 'local';
+        if (this.ok) {
+          const jogo = window.CrazyGames.SDK.game;
+          Som.mudoSDK(jogo.settings && jogo.settings.muteAudio);
+          if (typeof jogo.addSettingsChangeListener === 'function') jogo.addSettingsChangeListener(st => Som.mudoSDK(st && st.muteAudio));
+        }
       } catch (e) { this.ok = false; }
     },
     chama(fn) { if (!this.ok) return; try { fn(window.CrazyGames.SDK); } catch (e) {} },
@@ -1060,8 +1215,8 @@
       if (GD.ativo) return this.anuncioGD(tipo, depois);
       if (!this.ok || (tipo === 'midgame' && performance.now() - this.ultimoAnuncio < 180000)) { depois(false); return; }
       let feito = false;
-      const acaba = ok => { if (feito) return; feito = true; this.ultimoAnuncio = performance.now(); depois(ok); };
-      try { window.CrazyGames.SDK.ad.requestAd(tipo, { adStarted: () => {}, adFinished: () => acaba(true), adError: () => acaba(false) }); }
+      const acaba = ok => { if (feito) return; feito = true; Som.anuncio(false); this.ultimoAnuncio = performance.now(); depois(ok); };
+      try { window.CrazyGames.SDK.ad.requestAd(tipo, { adStarted: () => Som.anuncio(true), adFinished: () => acaba(true), adError: () => acaba(false) }); }
       catch (e) { acaba(false); }
     },
     anuncioGD(tipo, depois) {
@@ -1114,6 +1269,7 @@
 
   function fim(motivo) {
     S.estado = 'fim';
+    Som.fim();
     CG.jogo(false);
     const novo = guardaRecorde();
     if (novo) CG.festa();
@@ -1128,6 +1284,7 @@
   function faseCompleta() {
     if (S.fase === FASES.length - 1) {
       S.estado = 'vitoria';
+      Som.fase();
       CG.jogo(false);
       CG.festa();
       const novo = guardaRecorde();
@@ -1138,6 +1295,7 @@
       return;
     }
     S.estado = 'entre';
+    Som.fase();
     CG.jogo(false);
     const prox = FASES[S.fase + 1];
     desbloqueia(S.fase + 2);
@@ -1217,18 +1375,21 @@
     const ing = ING[it.tipo];
     if (ing.mau) {
       texto(bx, by - 20, tx(ing, 'grito'), '#E0607E');
+      Som.perigo();
       faiscas(bx, by, '#6B5E7B', 8);
       perdeVida(tx(ing, 'motivo'));
       return;
     }
     if (S.etapa !== 'apanhar') {
       texto(bx, by - 20, L('Tigela cheia!', 'Bowl is full!'), '#6B5E7B');
+      Som.naoPreciso();
       return;
     }
     const precisa = S.receita.precisa[it.tipo] || 0;
     if (S.tem[it.tipo] !== undefined && S.tem[it.tipo] < precisa) {
       S.tem[it.tipo]++;
       S.naTigela.push(it.tipo);
+      Som.apanha(S.combo);
       S.combo++;
       const mult = 1 + Math.floor((S.combo - 1) / 3);
       const pts = 10 * mult;
@@ -1238,12 +1399,14 @@
       f.face = 'nham'; f.faceT = .5;
       if (!faltam().length) {
         S.etapa = 'levar';
+        Som.tudo();
         faiscas(bx, by, '#FBE36A', 14);
         S.banner = { txt: L('Tudo na tigela!', 'All in the bowl!'), sub: L('Agora leva à panela', 'Now take it to the pot'), t: 1.5 };
       }
     } else {
       S.combo = 0;
       texto(bx, by - 20, L('Não é preciso', 'Not needed'), '#6B5E7B');
+      Som.naoPreciso();
       f.face = 'hum'; f.faceT = .6;
     }
     atualizaHud();
@@ -1253,6 +1416,7 @@
   const pertoDaPanela = () => Math.abs(S.fofo.x - S.panelaX) < 30;
 
   function pratoPronto() {
+    Som.pronto();
     const px = S.panelaX;
     const bonus = 50 + S.tempoGuardado * 2;
     S.pontos += bonus;
@@ -1358,6 +1522,7 @@
     } else if (S.etapa === 'voar') {
       if ((S.voarT += dt) >= DUR_VOO) {
         S.etapa = 'cozinhar'; S.cozT = 0; S.naTigela = [];
+        Som.splash();
         faiscas(S.panelaX, 408, '#9ED9C3', 12);
         texto(S.panelaX, 370, 'Splash!', '#3E9E7C');
       }
@@ -1711,6 +1876,7 @@
     const dt = Math.min(.033, (agora - ultimo) / 1000);
     ultimo = agora;
     atualiza(dt);
+    Som.quadro(dt);
     desenha();
     requestAnimationFrame(ciclo);
   }
@@ -1818,6 +1984,7 @@
       if (!(id in HTML_PT)) HTML_PT[id] = e.innerHTML;
       e.innerHTML = lingua === 'en' ? HTML_EN[id] : HTML_PT[id];
     }
+    Som.botao();
     el('btnPT').setAttribute('aria-pressed', String(lingua === 'pt'));
     el('btnEN').setAttribute('aria-pressed', String(lingua === 'en'));
     canvas.setAttribute('aria-label', L('Cozinha do Fofo', 'Fofo’s kitchen'));
@@ -1831,6 +1998,7 @@
     guarda.set('fofo-lingua', lingua);
     aplicaLingua();
   }
+  el('btnSom').addEventListener('click', () => Som.alterna());
   el('btnPT').addEventListener('click', () => mudaLingua('pt'));
   el('btnEN').addEventListener('click', () => mudaLingua('en'));
 

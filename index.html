@@ -1036,7 +1036,7 @@
     let ctx = null, mestre, gSfx, gMus, ruido;
     let ligado = guarda.get('fofo-som') !== '0';
     let emAnuncio = false, mudoSDK = false;
-    let musFase = null, prox = 0, passo = 0, timer = null, bolhaT = 0, tickSeg = -1;
+    let musFase = null, prox = 0, passo = 0, timer = null, bolhaT = 0, tickSeg = -1, desbloqueado = false;
     const midi = m => 440 * Math.pow(2, (m - 69) / 12);
     const volume = () => (ligado && !emAnuncio && !mudoSDK && !document.hidden) ? 1 : 0;
     function aplica() { if (ctx) mestre.gain.setTargetAtTime(volume(), ctx.currentTime, .05); botao(); }
@@ -1052,7 +1052,10 @@
         ruido = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
         const d = ruido.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       }
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state !== 'running') { try { ctx.resume(); } catch (e) {} }
+      if (!desbloqueado) {
+        try { const b = ctx.createBufferSource(); b.buffer = ctx.createBuffer(1, 1, 22050); b.connect(ctx.destination); b.start(0); desbloqueado = true; } catch (e) {}
+      }
       aplica();
     }
 
@@ -1165,8 +1168,9 @@
     }
     function alterna() { ligado = !ligado; guarda.set('fofo-som', ligado ? '1' : '0'); desbloqueia(); aplica(); }
 
-    addEventListener('pointerdown', desbloqueia, true);
-    addEventListener('keydown', desbloqueia, true);
+    ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'].forEach(ev => addEventListener(ev, desbloqueia, true));
+    // um pequeno "clique" nos botões, para se perceber logo que o som funciona
+    document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) setTimeout(() => toca('clique')(), 0); }, true);
     document.addEventListener('visibilitychange', aplica);
 
     return {

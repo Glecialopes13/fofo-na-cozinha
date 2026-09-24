@@ -199,6 +199,7 @@
             <li><span class="pt" style="background:#9ED9C3"></span><span id="txtR1">Da receita: pontos, e seguidos dão combo</span></li>
             <li><span class="pt" style="background:#FFF"></span><span id="txtR2">Não é preciso: perdes o combo</span></li>
             <li><span class="pt" style="background:#3B2F4A"></span><span id="txtR3">Perigos: perdes uma vida</span></li>
+            <li><span class="pt" style="background:#F5B642"></span><span id="txtR4">Bolhas douradas: poderes (íman, relógio, escudo, pontos a dobrar)</span></li>
           </ul>
         </div>
         <div class="col">
@@ -518,6 +519,40 @@
   };
   const BONS = Object.keys(ING).filter(k => !ING[k].mau);
 
+  // ---------- poderes: caem dentro de uma bolha dourada ----------
+  function bolhaPoder(c, t) {
+    elipse(c, 0, 0, 19, 19); c.fillStyle = '#FFF4C9'; c.fill(); contorno(c, 2.5);
+    elipse(c, 0, 0, 16, 16); c.lineWidth = 2; c.strokeStyle = '#F5B642'; c.stroke();
+    c.fillStyle = '#fff';
+    for (let i = 0; i < 3; i++) { const a = t * 2 + i * 2.1; elipse(c, Math.cos(a) * 23, Math.sin(a) * 23, 2.2, 2.2); c.fill(); }
+  }
+  const PODERES = {
+    ima: { nome: 'Íman', nomeEn: 'Magnet', desc: 'Puxa os ingredientes da receita', descEn: 'Pulls recipe ingredients in', dur: 7, draw(c, t = 0) {
+      bolhaPoder(c, t);
+      c.beginPath(); c.moveTo(-7, -9); c.lineTo(-7, 0); c.arc(0, 0, 7, Math.PI, 0, true); c.lineTo(7, -9);
+      c.lineCap = 'butt'; c.lineWidth = 8; c.strokeStyle = TINTA; c.stroke(); c.lineWidth = 5; c.strokeStyle = '#E4524A'; c.stroke();
+      c.fillStyle = '#D8D2C8'; c.fillRect(-9.5, -11, 5, 4); c.fillRect(4.5, -11, 5, 4);
+    } },
+    relogio: { nome: 'Relógio', nomeEn: 'Clock', desc: 'Mais 8 segundos e tudo cai devagar', descEn: '+8 seconds and everything falls slowly', dur: 5, draw(c, t = 0) {
+      bolhaPoder(c, t);
+      elipse(c, 0, 1, 10, 10); c.fillStyle = '#fff'; c.fill(); contorno(c, 2.5);
+      retRed(c, -3, -13, 6, 4, 1); c.fillStyle = TINTA; c.fill();
+      c.beginPath(); c.moveTo(0, 1); c.lineTo(0, -5); c.moveTo(0, 1); c.lineTo(4, 3); c.lineCap = 'round'; c.lineWidth = 2.2; c.strokeStyle = TINTA; c.stroke(); c.lineCap = 'butt';
+    } },
+    escudo: { nome: 'Escudo', nomeEn: 'Shield', desc: 'Protege do próximo perigo', descEn: 'Blocks the next hazard', dur: 15, draw(c, t = 0) {
+      bolhaPoder(c, t);
+      c.beginPath(); c.moveTo(0, -12); c.lineTo(10, -8); c.quadraticCurveTo(10, 6, 0, 12); c.quadraticCurveTo(-10, 6, -10, -8); c.closePath();
+      c.fillStyle = '#7FB3E8'; c.fill(); contorno(c, 2.5);
+      c.beginPath(); c.moveTo(0, -8); c.lineTo(0, 8); c.lineWidth = 2; c.strokeStyle = '#fff'; c.stroke();
+    } },
+    dobro: { nome: 'Pontos a dobrar', nomeEn: 'Double points', desc: 'Durante 8 segundos', descEn: 'For 8 seconds', dur: 8, draw(c, t = 0) {
+      bolhaPoder(c, t);
+      c.font = '700 15px Fredoka, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineJoin = 'round'; c.lineWidth = 4; c.strokeStyle = TINTA; c.strokeText('×2', 0, 1); c.fillStyle = '#F5B642'; c.fillText('×2', 0, 1);
+    } },
+  };
+  for (const k in PODERES) ING[k] = { ...PODERES[k], poder: true };
+
   // ---------- guardar progresso ----------
   // No CrazyGames usa o Data Module do SDK (guarda na conta do jogador); fora dele, o localStorage.
   let dadosSDK = null;
@@ -660,6 +695,7 @@
     txtR1: 'In the recipe: points, and a streak gives combos',
     txtR2: 'Not needed: you lose your combo',
     txtR3: 'Hazards: you lose a life',
+    txtR4: 'Golden bubbles: power-ups (magnet, clock, shield, double points)',
     txtEscolhe: 'Choose a level',
     txtTeclas: '<kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> · mouse or finger · <kbd>P</kbd> pause',
     txtNovidade: 'What’s new',
@@ -1051,6 +1087,8 @@
     aneis: [], flash: 0, comboPop: null,
     // tutorial da primeira vez: 'mover' → 'apanhar' → null; estrelas: vidas perdidas nesta fase
     tut: null, movido: 0, perdidas: 0,
+    // poderes ativos (segundos que faltam) e tempo até cair o próximo
+    poderes: { ima: 0, relogio: 0, escudo: 0, dobro: 0 }, poderT: 8,
     vento: 0, ventoAlvo: 0, ventoT: 0,
     // etapas de cada receita: apanhar → levar → voar (para a panela) → cozinhar
     etapa: 'apanhar', naTigela: [], voarT: 0, cozT: 0, tempoGuardado: 0, prato: null,
@@ -1160,6 +1198,7 @@
       tick() { nota(midi(88), agora(), .04, 'square', .05); },
       clique() { nota(midi(84), agora(), .05, 'sine', .08); },
       estrela(i) { const t = agora(); nota(midi(79 + i * 5), t, .22, 'triangle', .22); nota(midi(91 + i * 5), t + .04, .25, 'sine', .08); },
+      poder() { seq([72, 79, 84, 88, 91], .045, .22, 'sine', .2); },
       combo(m) { seq([79, 83, 86, 91].slice(0, 2 + Math.min(m, 2)), .055, .14, 'square', .07); },
     };
     const toca = nome => (...a) => { if (!ctx) return; try { efeitos[nome](...a); } catch (e) {} };
@@ -1252,7 +1291,7 @@
       mudoSDK(on) { mudoSDK = !!on; aplica(); },
       apanha: toca('apanha'), naoPreciso: toca('naoPreciso'), perigo: toca('perigo'), tudo: toca('tudo'),
       splash: toca('splash'), pronto: toca('pronto'), fase: toca('fase'), fim: toca('fim'), clique: toca('clique'),
-      estrela: toca('estrela'), combo: toca('combo'),
+      estrela: toca('estrela'), combo: toca('combo'), poder: toca('poder'),
     };
   })();
 
@@ -1315,6 +1354,8 @@
     S.ordem = baralha(FASES[i].receitas.slice());
     S.itens = []; S.parts = []; S.textos = []; S.spawnT = .8; S.prato = null;
     S.aneis = []; S.flash = 0; S.comboPop = null; S.perdidas = 0;
+    for (const k in S.poderes) S.poderes[k] = 0;
+    S.poderT = 6 + Math.random() * 4;
     S.tut = i === 0 && !tutFeito ? 'mover' : null; S.movido = 0;
     S.vento = 0; S.ventoAlvo = 0; S.ventoT = 1.5;
     S.fofo.x = W / 2; S.fofo.vx = 0; S.fofo.face = 'normal';
@@ -1471,11 +1512,39 @@
     S.itens.push(it);
   }
 
+  function geraPoder() {
+    const livres = Object.keys(PODERES).filter(k => S.poderes[k] <= 0 && !S.itens.some(it => it.tipo === k));
+    if (!livres.length) return;
+    const tipo = livres[Math.floor(Math.random() * livres.length)];
+    const x = 50 + Math.random() * (W - 100);
+    S.itens.push({ tipo, bx: x, x, y: 104, esc: 0, vy: 125, rot: 0, giro: 0, fase: Math.random() * 6.28, amp: faseAtual().balanca ? 18 : 0 });
+  }
+
+  function ativaPoder(k, x, y) {
+    const P = PODERES[k];
+    Som.poder();
+    faiscas(x, y, '#FBE36A', 16);
+    S.aneis.push({ x, y, r: 14, vida: 1, cor: '#F5B642' });
+    S.poderes[k] = P.dur;
+    if (k === 'relogio') { S.tempo = Math.min(S.tempoMax, S.tempo + 8); texto(x, y - 20, '+8 s', '#3E9E7C'); }
+    S.banner = { txt: tx(P, 'nome') + '!', sub: tx(P, 'desc'), t: 1.6 };
+    S.fofo.face = 'nham'; S.fofo.faceT = .5;
+  }
+
   function apanha(it) {
     const f = S.fofo;
     f.sq = .2;
     const bx = f.x, by = bordaTigela();
     const ing = ING[it.tipo];
+    if (ing.poder) { ativaPoder(it.tipo, bx, by); return; }
+    if (ing.mau && S.poderes.escudo > 0) {
+      S.poderes.escudo = 0;
+      texto(bx, by - 20, L('Escudo!', 'Shield!'), '#3C6FB6');
+      faiscas(bx, by, '#7FB3E8', 14);
+      S.aneis.push({ x: bx, y: by, r: 30, vida: 1, cor: '#7FB3E8' });
+      Som.naoPreciso();
+      return;
+    }
     if (ing.mau) {
       texto(bx, by - 20, tx(ing, 'grito'), '#E0607E');
       Som.perigo();
@@ -1495,7 +1564,7 @@
       Som.apanha(S.combo);
       S.combo++;
       const mult = 1 + Math.floor((S.combo - 1) / 3);
-      const pts = 10 * mult;
+      const pts = 10 * mult * (S.poderes.dobro > 0 ? 2 : 1);
       S.pontos += pts;
       texto(bx, by - 20, '+' + pts, '#3E9E7C');
       faiscas(bx, by, '#9ED9C3');
@@ -1525,7 +1594,7 @@
   function pratoPronto() {
     Som.pronto();
     const px = S.panelaX;
-    const bonus = 50 + S.tempoGuardado * 2;
+    const bonus = (50 + S.tempoGuardado * 2) * (S.poderes.dobro > 0 ? 2 : 1);
     S.pontos += bonus;
     S.prato = { x: px, y: 396, t: 0, tipos: Object.keys(S.receita.precisa).slice(0, 3) };
     faiscas(px, 400, '#F29BB0', 26); faiscas(px, 400, '#FBE36A', 16);
@@ -1610,16 +1679,23 @@
 
     S.spawnT -= dt;
     if (S.spawnT <= 0) { gera(); S.spawnT = .91 * (.8 + Math.random() * .4) / alarga(); }
+    for (const k in S.poderes) if (S.poderes[k] > 0) S.poderes[k] = Math.max(0, S.poderes[k] - dt);
+    if (S.etapa === 'apanhar' && !S.tut && !(S.fase === 0 && S.feitas === 0) && (S.poderT -= dt) <= 0) { geraPoder(); S.poderT = 12 + Math.random() * 7; }
 
     const borda = bordaTigela();
+    const precisos = S.poderes.ima > 0 && S.etapa === 'apanhar' ? faltam() : [];
+    // relógio: tudo cai mais devagar
+    const dti = S.poderes.relogio > 0 ? dt * .55 : dt;
     for (const it of S.itens) {
       const y0 = it.y;
       it.esc = Math.min(1, it.esc + dt * 5);
-      it.y += it.vy * dt;
-      it.rot += it.giro * dt;
-      if (F.vento) it.bx = Math.max(20, Math.min(W - 20, it.bx + S.vento * dt));
+      it.y += it.vy * dti;
+      it.rot += it.giro * dti;
+      if (F.vento) it.bx = Math.max(20, Math.min(W - 20, it.bx + S.vento * dti));
+      // íman: os ingredientes que faltam vêm ter com a tigela
+      if (precisos.includes(it.tipo) && !it.fora && it.y < borda && Math.abs(it.bx - f.x) < 260) { it.bx += (f.x - it.bx) * Math.min(1, dt * 2.6); it.amp *= Math.pow(.2, dt); }
       // Açores: ressalta uma vez no chão
-      if (it.saltou) { it.vy += 520 * dt; it.bx = Math.max(20, Math.min(W - 20, it.bx + it.vx * dt)); }
+      if (it.saltou) { it.vy += 520 * dti; it.bx = Math.max(20, Math.min(W - 20, it.bx + it.vx * dti)); }
       if (F.ressalta && !it.saltou && it.y >= CHAO - 12) {
         it.saltou = true; it.fora = true; it.y = CHAO - 12;
         it.vy = -430; it.vx = (Math.random() - .5) * 120;
@@ -1943,6 +2019,36 @@
     });
   }
 
+  function desenhaEfeitosPoder(c) {
+    if (S.estado !== 'jogo' && S.estado !== 'pausa') return;
+    const x = S.fofo.x, P = S.poderes;
+    if (P.escudo > 0) {
+      c.save(); c.globalAlpha = P.escudo < 2 ? .4 + Math.sin(S.t * 20) * .3 : .8;
+      elipse(c, x, CHAO - 62, 66, 72); c.fillStyle = 'rgba(127,179,232,.14)'; c.fill();
+      c.lineWidth = 3; c.strokeStyle = '#7FB3E8'; c.stroke(); c.restore();
+    }
+    if (P.ima > 0) {
+      const y = bordaTigela();
+      c.save(); c.strokeStyle = 'rgba(228,82,74,.5)'; c.lineWidth = 2.5;
+      for (let i = 0; i < 3; i++) { const k = (S.t * 1.6 + i / 3) % 1; c.globalAlpha = k; elipse(c, x, y, 60 + (1 - k) * 90, (60 + (1 - k) * 90) * .35); c.stroke(); }
+      c.restore();
+    }
+  }
+
+  // pastilhas dos poderes ativos, por baixo do cartão da receita (coordenadas do cartão)
+  function desenhaPoderes(c) {
+    if (!S.receita || S.estado === 'inicio') return;
+    const ativos = Object.keys(PODERES).filter(k => S.poderes[k] > 0);
+    const sitios = faseAtual().vento ? [12, 74, 264, 326] : [12, 74, 136, 198];
+    ativos.forEach((k, i) => {
+      const x = sitios[i], y = 106, fr = S.poderes[k] / PODERES[k].dur;
+      retRed(c, x, y, 58, 26, 13); c.fillStyle = 'rgba(255,253,251,.95)'; c.fill(); contorno(c, 2);
+      desenhaIng(c, k, x + 14, y + 13, .52, 0, S.t);
+      retRed(c, x + 28, y + 10, 24, 6, 3); c.fillStyle = '#EDE7F2'; c.fill();
+      retRed(c, x + 28, y + 10, Math.max(4, 24 * fr), 6, 3); c.fillStyle = '#F5B642'; c.fill();
+    });
+  }
+
   function desenhaCombo(c) {
     const p = S.comboPop; if (!p) return;
     const k = 1.1 - p.t, esc = k < .15 ? .6 + k / .15 * .7 : 1.3 - Math.min(.3, (k - .15) * 1.2);
@@ -1996,6 +2102,7 @@
     desenhaPanela(ctx);
     for (const it of S.itens) {
       if (ING[it.tipo].mau) { elipse(ctx, it.x, it.y, 22 * it.esc, 22 * it.esc); ctx.fillStyle = 'rgba(224,96,126,.16)'; ctx.fill(); }
+      else if (ING[it.tipo].poder) { const r = (30 + Math.sin(S.t * 6) * 4) * it.esc; elipse(ctx, it.x, it.y, r, r); ctx.fillStyle = 'rgba(251,227,106,.35)'; ctx.fill(); }
       if (it.pressa) {
         for (let k = 2; k >= 1; k--) { ctx.globalAlpha = .18 * (3 - k); desenhaIng(ctx, it.tipo, it.x, it.y - k * 12, it.esc, it.rot, S.t); }
         ctx.globalAlpha = 1;
@@ -2005,6 +2112,7 @@
     }
     if (faseAtual().nevoeiro) desenhaNevoeiro(ctx);
     desenhaFofo(ctx);
+    desenhaEfeitosPoder(ctx);
     desenhaVoo(ctx);
     desenhaPrato(ctx);
     for (const p of S.parts) {
@@ -2033,6 +2141,7 @@
     ctx.save(); ctx.translate(OX, 0);
     desenhaReceita(ctx);
     desenhaVento(ctx);
+    desenhaPoderes(ctx);
     desenhaBanner(ctx);
     ctx.restore();
   }

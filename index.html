@@ -39,45 +39,34 @@
       var(--parede);
     color: var(--tinta);
     font-family: var(--texto);
-    padding-inline: 16px;
-    box-sizing: border-box;
+    overflow: hidden;
   }
-  .app {
-    min-height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding-block: 12px;
+  /* o palco ocupa a janela toda; a área do jogo é dimensionada pelo JS (largura lógica entre 400 e 1080) */
+  .palco { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .area { position: relative; display: flex; flex-direction: column; overflow: hidden; background: #DDE8F4; }
+  .barra {
+    position: relative; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    padding: 6px 8px; background: var(--parede);
   }
-  .barra, .palco, .dica { width: min(100%, 440px, max(300px, calc((100vh - 130px) * 0.6667))); }
-  @supports (height: 100dvh) {
-    .barra, .palco, .dica { width: min(100%, 440px, max(300px, calc((100dvh - 130px) * 0.6667))); }
-  }
-  .barra { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-  .marca { font-family: var(--display); font-weight: 700; font-size: 1.35rem; letter-spacing: -.01em; }
-  .marca span { color: #E07A95; }
   .stats {
-    display: flex; gap: 14px; align-items: baseline;
-    font-size: .8rem; font-weight: 700; color: var(--tinta-suave);
+    display: flex; gap: 12px; align-items: baseline;
+    font-size: .78rem; font-weight: 700; color: var(--tinta-suave);
     text-transform: uppercase; letter-spacing: .06em;
   }
   .stats b {
-    font-family: var(--display); font-size: 1.15rem; color: var(--tinta);
+    font-family: var(--display); font-size: 1.1rem; color: var(--tinta);
     letter-spacing: 0; font-variant-numeric: tabular-nums; margin-left: 4px;
   }
+  .controlos { display: flex; gap: 8px; align-items: center; }
   .vidas { color: #E0607E; font-size: 1.1rem; letter-spacing: 2px; }
   .vidas .gasta { color: #C9C2D3; }
-  .palco {
-    position: relative;
-    aspect-ratio: 2 / 3;
-    max-width: 100%;
-    border: 3px solid var(--tinta);
-    border-radius: 22px;
-    overflow: hidden;
-    background: #DDE8F4;
-    box-shadow: 0 6px 0 var(--tinta);
+  /* ecrã largo: o painel fica por cima do jogo, nos cantos, ao lado do cartão da receita */
+  .area.largo .barra { position: absolute; top: 10px; left: 12px; right: 12px; padding: 0; background: none; align-items: flex-start; pointer-events: none; }
+  .area.largo .barra > * { pointer-events: auto; }
+  .area.largo .stats {
+    flex-direction: column; align-items: flex-start; gap: 0;
+    background: rgba(255,253,251,.95); border: 3px solid var(--tinta); border-radius: 16px; padding: 6px 12px 7px;
   }
   canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: none; }
   .ecra {
@@ -87,7 +76,9 @@
     overflow-y: auto;
     padding: 14px;
     background: rgba(59, 47, 74, .3);
+    z-index: 1;
   }
+  .area:not(.largo) .ecra { top: var(--hh, 0px); }
   .cartao {
     margin: auto;
     background: var(--papel);
@@ -160,41 +151,51 @@
   .lingua button + button { border-left: 2px solid var(--tinta); }
   .lingua button[aria-pressed="true"] { background: var(--menta); color: var(--tinta); }
   .lingua button:focus-visible { outline: 3px solid #E07A95; outline-offset: -3px; }
-  .dica { margin: 0; font-size: .8rem; color: var(--tinta-suave); text-align: center; }
+  .dica { display: none; }
+  @media (pointer: coarse) { .dica { display: block; } }
+  .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  /* ecrã largo: o menu inicial em duas colunas, para caber em janelas baixas (ex.: 16:9) */
+  .area.largo .cartao.inicio { flex-direction: row; max-width: 640px; gap: 18px; align-items: center; }
+  .area.largo .cartao.inicio .col { flex: 1 1 0; }
   @media (prefers-reduced-motion: reduce) { .botao { transition: none; } }
 </style>
 </head>
 <body>
 
-<main class="app">
-  <header class="barra">
-    <div class="marca">Fofo <span>na</span> Cozinha</div>
-    <div class="stats">
-      <span><span id="rotPontos">Pontos</span><b id="pontos">0</b></span>
-      <span><span id="rotRecorde">Recorde</span><b id="recorde">0</b></span>
-      <span class="vidas" id="vidas" aria-label="3 vidas">♥♥♥</span>
-      <button class="mini somBtn" id="btnSom" type="button" aria-pressed="true" aria-label="Som"></button>
-      <span class="lingua" role="group" aria-label="Língua / Language"><button type="button" id="btnPT" lang="pt-PT">PT</button><button type="button" id="btnEN" lang="en">EN</button></span>
-    </div>
-  </header>
-
-  <div class="palco" id="palco">
+<main class="palco" id="palco">
+  <div class="area" id="area">
+    <header class="barra" id="barra">
+      <div class="stats">
+        <span><span id="rotPontos">Pontos</span><b id="pontos">0</b></span>
+        <span><span id="rotRecorde">Recorde</span><b id="recorde">0</b></span>
+        <span class="vidas" id="vidas" aria-label="3 vidas">♥♥♥</span>
+      </div>
+      <div class="controlos">
+        <button class="mini somBtn" id="btnSom" type="button" aria-pressed="true" aria-label="Som"></button>
+        <span class="lingua" role="group" aria-label="Língua / Language"><button type="button" id="btnPT" lang="pt-PT">PT</button><button type="button" id="btnEN" lang="en">EN</button></span>
+      </div>
+    </header>
     <canvas id="jogo" aria-label="Cozinha do Fofo"></canvas>
 
     <div class="ecra" id="ecraInicio">
-      <div class="cartao">
-        <div class="etiqueta" id="txtEtiqueta">10 fases · 30 receitas portuguesas</div>
-        <h1>Fofo na Cozinha</h1>
-        <p id="txtIntro">Apanha com a tigela os ingredientes de cada receita, leva-os à panela antes que o tempo acabe e deixa cozinhar.</p>
-        <ul class="regras">
-          <li><span class="pt" style="background:#9ED9C3"></span><span id="txtR1">Da receita: pontos, e seguidos dão combo</span></li>
-          <li><span class="pt" style="background:#FFF"></span><span id="txtR2">Não é preciso: perdes o combo</span></li>
-          <li><span class="pt" style="background:#3B2F4A"></span><span id="txtR3">Perigos: perdes uma vida</span></li>
-        </ul>
-        <div class="etiqueta" id="txtEscolhe">Escolhe a fase</div>
-        <div class="fases" id="listaFases"></div>
-        <button class="botao" id="btnComecar">Começar a cozinhar</button>
-        <div class="teclas" id="txtTeclas"><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> · rato ou dedo · <kbd>P</kbd> pausa</div>
+      <div class="cartao inicio">
+        <div class="col">
+          <div class="etiqueta" id="txtEtiqueta">10 fases · 30 receitas portuguesas</div>
+          <h1>Fofo na Cozinha</h1>
+          <p id="txtIntro">Apanha com a tigela os ingredientes de cada receita, leva-os à panela antes que o tempo acabe e deixa cozinhar.</p>
+          <ul class="regras">
+            <li><span class="pt" style="background:#9ED9C3"></span><span id="txtR1">Da receita: pontos, e seguidos dão combo</span></li>
+            <li><span class="pt" style="background:#FFF"></span><span id="txtR2">Não é preciso: perdes o combo</span></li>
+            <li><span class="pt" style="background:#3B2F4A"></span><span id="txtR3">Perigos: perdes uma vida</span></li>
+          </ul>
+        </div>
+        <div class="col">
+          <div class="etiqueta" id="txtEscolhe">Escolhe a fase</div>
+          <div class="fases" id="listaFases"></div>
+          <button class="botao" id="btnComecar">Começar a cozinhar</button>
+          <div class="teclas" id="txtTeclas"><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> · rato ou dedo · <kbd>P</kbd> pausa</div>
+          <p class="pequeno dica" id="txtDica">No telemóvel, arrasta o dedo pela cozinha para mexer o Fofo.</p>
+        </div>
       </div>
     </div>
 
@@ -239,13 +240,14 @@
       </div>
     </div>
   </div>
-
-  <p class="dica" id="txtDica">No telemóvel, arrasta o dedo pela cozinha para mexer o Fofo.</p>
 </main>
 
 <script>
 (() => {
-  const W = 400, H = 600;
+  // H é fixo; a largura lógica W adapta-se à janela: 400 no telemóvel ao alto, até 1080 num ecrã largo (16:9).
+  // Os cenários foram desenhados em 400 de largura e ficam ao centro (OX = margem de cada lado).
+  const H = 600, W_MIN = 400, W_MAX = 1080, W_LARGO = 760;
+  let W = W_MIN, OX = 0;
   const CHAO = 556;
   const TINTA = '#3B2F4A';
   const RECEITAS_POR_FASE = 3;
@@ -254,6 +256,14 @@
   const canvas = document.getElementById('jogo');
   const ctx = canvas.getContext('2d');
   const palco = document.getElementById('palco');
+  const area = document.getElementById('area');
+  const barra = document.getElementById('barra');
+  // posições em coordenadas do cenário (0–400) → coordenadas do ecrã
+  const cx = x => x + OX;
+  // a panela fica encostada ao lado mais próximo (esquerda, meio ou direita)
+  const posPanela = b => b < 130 ? b : b > 270 ? W - (W_MIN - b) : b + OX;
+  // o Fofo anda mais depressa num ecrã largo e caem mais coisas, para o ritmo não abrandar
+  const alarga = () => 1 + (W - W_MIN) / W_MIN * .5;
   const el = id => document.getElementById(id);
 
   // ---------- utilitários de desenho ----------
@@ -653,6 +663,12 @@
   const HTML_PT = {};
 
   // ---------- cenários ----------
+  let espelhado = false;
+  // nas cópias espelhadas das laterais, o texto volta a ser desenhado direito
+  function textoCena(c, t, x, y) {
+    if (!espelhado) { c.fillText(t, x, y); return; }
+    c.save(); c.translate(x, y); c.scale(-1, 1); c.fillText(t, 0, 0); c.restore();
+  }
   function chaoXadrez(c, a, b) {
     for (let x = 0; x < W; x += 25) for (let y = CHAO; y < H; y += 25) { c.fillStyle = ((x + y) / 25) % 2 ? a : b; c.fillRect(x, y, 25, 25); }
   }
@@ -697,7 +713,7 @@
       // letreiro
       c.beginPath(); c.moveTo(165, 170); c.lineTo(175, 196); c.moveTo(235, 170); c.lineTo(225, 196); contorno(c, 2);
       retRed(c, 140, 194, 120, 34, 8); c.fillStyle = '#FFFDFB'; c.fill(); contorno(c, 3);
-      c.fillStyle = '#E4524A'; c.font = '700 20px Fredoka, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('BOLHÃO', 200, 212);
+      c.fillStyle = '#E4524A'; c.font = '700 20px Fredoka, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; textoCena(c, 'BOLHÃO', 200, 212);
       // toldos
       for (let i = 0; i < 3; i++) {
         const x0 = 8 + i * 132;
@@ -973,18 +989,44 @@
   };
 
   const fundos = {};
-  function fundoDe(id) {
-    if (!fundos[id]) {
-      const f = document.createElement('canvas'); f.width = W * 2; f.height = H * 2;
-      const c = f.getContext('2d'); c.setTransform(2, 0, 0, 2, 0, 0);
-      CENARIOS[id](c);
-      c.beginPath(); c.moveTo(0, CHAO); c.lineTo(W, CHAO); contorno(c, 3);
-      fundos[id] = f;
+  // cada cenário é desenhado uma vez em 400 de largura, normal e espelhado (com o texto direito)
+  const bases = {};
+  function cenaBase(id, esp) {
+    const chave = id + (esp ? ':esp' : '');
+    if (!bases[chave]) {
+      const f = document.createElement('canvas'); f.width = W_MIN * 2; f.height = H * 2;
+      const c = f.getContext('2d');
+      c.setTransform(esp ? -2 : 2, 0, 0, 2, esp ? W_MIN * 2 : 0, 0);
+      const largura = W;
+      W = W_MIN; espelhado = esp;
+      try { CENARIOS[id](c); } finally { W = largura; espelhado = false; }
+      bases[chave] = f;
     }
-    return fundos[id];
+    return bases[chave];
+  }
+  // o cenário fica ao centro e as cópias espelhadas enchem as laterais, encaixando sem emenda;
+  // corta-se 4 px de cada borda para esconder os contornos que os cenários desenham nas margens
+  const CORTE = 4;
+  function fundoDe(id) {
+    const chave = id + ':' + W;
+    if (!fundos[chave]) {
+      const f = document.createElement('canvas'); f.width = W * 2; f.height = H * 2;
+      const c = f.getContext('2d');
+      const sx = CORTE * 2, sw = (W_MIN - CORTE * 2) * 2;
+      c.drawImage(cenaBase(id, false), sx, 0, sw, H * 2, OX * 2, 0, W_MIN * 2, H * 2);
+      if (OX > 0) {
+        const esp = cenaBase(id, true);
+        c.drawImage(esp, sx, 0, sw, H * 2, (OX - W_MIN) * 2, 0, W_MIN * 2, H * 2);
+        c.drawImage(esp, sx, 0, sw, H * 2, (OX + W_MIN) * 2, 0, W_MIN * 2, H * 2);
+      }
+      c.setTransform(2, 0, 0, 2, 0, 0);
+      c.beginPath(); c.moveTo(0, CHAO); c.lineTo(W, CHAO); contorno(c, 3);
+      fundos[chave] = f;
+    }
+    return fundos[chave];
   }
 
-  const flocos = Array.from({ length: 45 }, (_, i) => ({ x: Math.random() * W, y: Math.random() * 620, r: 1.2 + Math.random() * 2.4, v: 18 + Math.random() * 30, o: Math.random() * 6 }));
+  const flocos = Array.from({ length: 110 }, (_, i) => ({ x: Math.random(), y: Math.random() * 620, r: 1.2 + Math.random() * 2.4, v: 18 + Math.random() * 30, o: Math.random() * 6 }));
 
   // ---------- estado ----------
   const S = {
@@ -994,7 +1036,7 @@
     vento: 0, ventoAlvo: 0, ventoT: 0,
     // etapas de cada receita: apanhar → levar → voar (para a panela) → cozinhar
     etapa: 'apanhar', naTigela: [], voarT: 0, cozT: 0, tempoGuardado: 0, prato: null,
-    fofo: { x: 200, vx: 0, face: 'normal', faceT: 0, sq: 0, andar: 0 },
+    fofo: { x: W / 2, vx: 0, face: 'normal', faceT: 0, sq: 0, andar: 0 },
   };
   let recorde = 0, desbloqueadas = 1, escolhida = 0;
   function leProgresso() {
@@ -1022,7 +1064,7 @@
   function novaReceita() {
     S.receita = S.ordem[S.idx++]; preparaReceita();
     const F = faseAtual();
-    if (F.panelaMuda) { const sitios = [62, 200, 340].filter(p => p !== S.panelaX); S.panelaX = sitios[Math.floor(Math.random() * sitios.length)]; }
+    if (F.panelaMuda) { const sitios = [62, 200, 340].filter(p => p !== S.panelaBase); S.panelaBase = sitios[Math.floor(Math.random() * sitios.length)]; S.panelaX = posPanela(S.panelaBase); }
   }
 
   function faltam() { return Object.keys(S.receita.precisa).filter(k => S.tem[k] < S.receita.precisa[k]); }
@@ -1239,11 +1281,11 @@
   };
 
   function comecaFase(i) {
-    S.fase = i; S.feitas = 0; S.idx = 0; S.combo = 0; S.panelaX = FASES[i].panelaX;
+    S.fase = i; S.feitas = 0; S.idx = 0; S.combo = 0; S.panelaBase = FASES[i].panelaX; S.panelaX = posPanela(S.panelaBase);
     S.ordem = baralha(FASES[i].receitas.slice());
     S.itens = []; S.parts = []; S.textos = []; S.spawnT = .8; S.prato = null;
     S.vento = 0; S.ventoAlvo = 0; S.ventoT = 1.5;
-    S.fofo.x = 200; S.fofo.vx = 0; S.fofo.face = 'normal';
+    S.fofo.x = W / 2; S.fofo.vx = 0; S.fofo.face = 'normal';
     desbloqueia(i + 1);
     novaReceita();
     S.banner = { txt: tx(FASES[i], 'nome'), sub: L('Fase ', 'Level ') + (i + 1) + ' · ' + tx(FASES[i], 'lugar'), t: 2 };
@@ -1360,8 +1402,8 @@
       if (!outros.length || Math.random() < .3) outros = BONS.filter(k => !precisos.includes(k));
       tipo = outros[Math.floor(Math.random() * outros.length)];
     }
-    let x = 36 + Math.random() * 328;
-    if (F.vento) x = Math.max(36, Math.min(364, x - S.vento * 1.2));
+    let x = 36 + Math.random() * (W - 72);
+    if (F.vento) x = Math.max(36, Math.min(W - 36, x - S.vento * 1.2));
     const it = {
       tipo, bx: x, x, y: 104, esc: 0,
       vy: 132 + Math.random() * 40,
@@ -1466,15 +1508,15 @@
     const eixo = (teclas.dir ? 1 : 0) - (teclas.esq ? 1 : 0);
     if (F.gelo) {
       let desejo = 0, forca = 2.2;
-      if (eixo) { alvoX = null; desejo = eixo * 400; }
-      else if (alvoX !== null) { desejo = Math.max(-420, Math.min(420, (alvoX - f.x) * 6)); forca = 2.8; }
+      if (eixo) { alvoX = null; desejo = eixo * 400 * alarga(); }
+      else if (alvoX !== null) { const lim = 420 * alarga(); desejo = Math.max(-lim, Math.min(lim, (alvoX - f.x) * 6)); forca = 2.8; }
       else forca = .5;
       f.vx += (desejo - f.vx) * Math.min(1, dt * forca);
       f.x += f.vx * dt;
-      if (f.x < 52 || f.x > 348) f.vx *= -.3;
+      if (f.x < 52 || f.x > W - 52) f.vx *= -.3;
     } else if (eixo) {
       alvoX = null;
-      f.vx += (eixo * 400 - f.vx) * Math.min(1, dt * 12);
+      f.vx += (eixo * 400 * alarga() - f.vx) * Math.min(1, dt * 12);
       f.x += f.vx * dt;
     } else if (alvoX !== null) {
       f.x += (alvoX - f.x) * Math.min(1, dt * 14);
@@ -1483,7 +1525,7 @@
       f.vx *= Math.pow(.001, dt);
       f.x += f.vx * dt;
     }
-    f.x = Math.max(52, Math.min(348, f.x));
+    f.x = Math.max(52, Math.min(W - 52, f.x));
     const mov = (f.x - antes) / Math.max(dt, .001);
     f.andar += Math.min(Math.abs(mov), 500) * dt * .045;
 
@@ -1494,7 +1536,7 @@
     }
 
     S.spawnT -= dt;
-    if (S.spawnT <= 0) { gera(); S.spawnT = .91 * (.8 + Math.random() * .4); }
+    if (S.spawnT <= 0) { gera(); S.spawnT = .91 * (.8 + Math.random() * .4) / alarga(); }
 
     const borda = bordaTigela();
     for (const it of S.itens) {
@@ -1502,9 +1544,9 @@
       it.esc = Math.min(1, it.esc + dt * 5);
       it.y += it.vy * dt;
       it.rot += it.giro * dt;
-      if (F.vento) it.bx = Math.max(20, Math.min(380, it.bx + S.vento * dt));
+      if (F.vento) it.bx = Math.max(20, Math.min(W - 20, it.bx + S.vento * dt));
       // Açores: ressalta uma vez no chão
-      if (it.saltou) { it.vy += 520 * dt; it.bx = Math.max(20, Math.min(380, it.bx + it.vx * dt)); }
+      if (it.saltou) { it.vy += 520 * dt; it.bx = Math.max(20, Math.min(W - 20, it.bx + it.vx * dt)); }
       if (F.ressalta && !it.saltou && it.y >= CHAO - 12) {
         it.saltou = true; it.fora = true; it.y = CHAO - 12;
         it.vy = -430; it.vx = (Math.random() - .5) * 120;
@@ -1512,7 +1554,7 @@
       }
       // Alentejo: as miragens desaparecem antes de chegar
       if (it.miragem && it.y > 330) { it.apanhado = true; faiscas(it.x, it.y, 'rgba(255,240,200,.9)', 6); continue; }
-      it.x = it.amp ? Math.max(18, Math.min(382, it.bx + Math.sin(S.t * 2.2 + it.fase) * it.amp)) : it.bx;
+      it.x = it.amp ? Math.max(18, Math.min(W - 18, it.bx + Math.sin(S.t * 2.2 + it.fase) * it.amp)) : it.bx;
       if (!it.fora && y0 <= borda + 4 && it.y + 14 >= borda && !it.miragem && Math.abs(it.x - f.x) <= (F.cestoPequeno ? 36 : 50)) { it.apanhado = true; apanha(it); if (S.estado !== 'jogo') break; }
       if (it.y > borda + 16 && it.vy > 0) it.fora = true;
       if (it.saltou && it.vy < 0 && it.y < borda - 20) it.fora = false;
@@ -1544,7 +1586,7 @@
 
     S.tempo -= dt;
     if (S.tempo <= 0) {
-      texto(200, 300, L('O tempo acabou!', 'Time’s up!'), '#E0607E');
+      texto(W / 2, 300, L('O tempo acabou!', 'Time’s up!'), '#E0607E');
       perdeVida(L('O tempo acabou', 'Time ran out'));
       if (S.estado === 'jogo') { preparaReceita(); S.banner = { txt: S.receita.nome, sub: L('Tenta outra vez', 'Try again'), t: 1.6 }; }
     }
@@ -1726,8 +1768,9 @@
     g.addColorStop(.75, 'rgba(236,240,246,.97)'); g.addColorStop(1, 'rgba(236,240,246,0)');
     c.fillStyle = g; c.fillRect(0, 170, W, 200);
     c.fillStyle = 'rgba(255,255,255,.85)';
-    for (let i = 0; i < 9; i++) {
-      const x = ((i * 61 + S.t * (10 + i % 3 * 5)) % 480) - 40, y = 200 + (i % 4) * 40;
+    const n = Math.ceil(9 * W / W_MIN);
+    for (let i = 0; i < n; i++) {
+      const x = ((i * 61 + S.t * (10 + i % 3 * 5)) % (W + 80)) - 40, y = 200 + (i % 4) * 40;
       elipse(c, x, y, 46, 20); c.fill();
     }
   }
@@ -1735,7 +1778,8 @@
   function desenhaAmbiente(c) {
     const id = faseAtual().id;
     if (id === 'acores') {
-      [118, 262].forEach((x, j) => {
+      // fumarolas do cenário central e das cópias espelhadas
+      [118, 262].flatMap(x => [cx(x), OX - x, OX + 2 * W_MIN - x]).filter(x => x > -30 && x < W + 30).forEach((x, j) => {
         c.fillStyle = 'rgba(255,255,255,.7)';
         for (let i = 0; i < 4; i++) {
           const k = (S.t * .5 + i / 4 + j * .3) % 1;
@@ -1752,8 +1796,8 @@
       }
     } else if (id === 'praia') {
       c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = 2.5; c.lineCap = 'round';
-      for (let i = 0; i < 7; i++) {
-        const x = ((i * 67 + S.t * 14) % 440) - 20, y = 350 + (i % 3) * 30;
+      for (let i = 0, n = Math.ceil(7 * W / W_MIN); i < n; i++) {
+        const x = ((i * 67 + S.t * 14) % (W + 40)) - 20, y = 350 + (i % 3) * 30;
         c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 8, y - 4, x + 16, y); c.stroke();
       }
       c.lineCap = 'butt';
@@ -1761,7 +1805,7 @@
       c.fillStyle = 'rgba(255,255,255,.9)';
       for (const fl of flocos) {
         const y = (fl.y + S.t * fl.v) % 620 - 10;
-        elipse(c, fl.x + Math.sin(S.t + fl.o) * 8, y, fl.r, fl.r); c.fill();
+        elipse(c, fl.x * W + Math.sin(S.t + fl.o) * 8, y, fl.r, fl.r); c.fill();
       }
     }
   }
@@ -1871,9 +1915,11 @@
     }
     ctx.globalAlpha = 1; ctx.lineJoin = 'miter';
     ctx.restore();
+    ctx.save(); ctx.translate(OX, 0);
     desenhaReceita(ctx);
     desenhaVento(ctx);
     desenhaBanner(ctx);
+    ctx.restore();
   }
 
   // ---------- ciclo ----------
@@ -1887,11 +1933,39 @@
     requestAnimationFrame(ciclo);
   }
 
+  // escolhe a largura lógica pela forma da janela e ajusta tudo o que já está em jogo
+  function mudaLargura(novo) {
+    if (novo === W) return;
+    const k = novo / W;
+    W = novo; OX = (W - W_MIN) / 2;
+    const f = S.fofo;
+    f.x = Math.max(52, Math.min(W - 52, f.x * k)); f.vx = 0; alvoX = null;
+    for (const it of S.itens) { it.x *= k; it.bx *= k; }
+    for (const t of S.textos) t.x *= k;
+    for (const p of S.parts) p.x *= k;
+    if (S.vooDe != null) S.vooDe *= k;
+    if (S.panelaBase != null) S.panelaX = posPanela(S.panelaBase);
+    if (S.prato) S.prato.x = S.panelaX;
+    if (S.estado === 'inicio') cenaDemo(escolhida);
+    for (const chave in fundos) if (!chave.endsWith(':' + W)) delete fundos[chave];
+  }
+
   function redimensiona() {
-    const r = canvas.getBoundingClientRect();
+    const r = palco.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    let largo = Math.round(H * r.width / r.height) >= W_LARGO;
+    area.classList.toggle('largo', largo);
+    const hh = largo ? 0 : barra.offsetHeight;
+    const altura = Math.max(1, r.height - hh);
+    const w = Math.max(W_MIN, Math.min(largo ? W_MAX : W_LARGO - 1, Math.round(H * r.width / altura)));
+    const ch = Math.min(altura, r.width * H / w), cw = ch * w / H;
+    area.style.width = cw + 'px'; area.style.height = (ch + hh) + 'px';
+    area.style.setProperty('--hh', hh + 'px');
+    canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
+    mudaLargura(w);
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    const w = Math.max(1, Math.round(r.width * dpr));
-    if (canvas.width !== w) { canvas.width = w; canvas.height = Math.round(w * 1.5); }
+    const bw = Math.max(1, Math.round(cw * dpr)), bh = Math.max(1, Math.round(ch * dpr));
+    if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
   }
 
   // ---------- menu ----------
@@ -1908,14 +1982,14 @@
     [['fruta', 96, 170], ['farinha', 300, 290], ['fava', 170, 330], ['ovo', 250, 150]],
   ];
   function cenaDemo(i) {
-    S.fase = i; S.feitas = 0; S.panelaX = FASES[i].panelaX;
+    S.fase = i; S.feitas = 0; S.panelaBase = FASES[i].panelaX; S.panelaX = posPanela(S.panelaBase);
     S.receita = FASES[i].receitas[0];
     S.tem = {}; Object.keys(S.receita.precisa).forEach((k, j) => S.tem[k] = j % 2 ? 0 : 1);
     S.tempoMax = 32; S.tempo = 24; S.vento = 30;
-    S.itens = DEMO[i].map(([tipo, x, y], j) => ({ tipo, x, bx: x, y, esc: 1, rot: ING[tipo].rapido ? 0 : (j % 2 ? -.2 : .2), vy: 0, giro: 0, amp: 0 }));
+    S.itens = DEMO[i].map(([tipo, x0, y], j) => ({ tipo, x: cx(x0), bx: cx(x0), y, esc: 1, rot: ING[tipo].rapido ? 0 : (j % 2 ? -.2 : .2), vy: 0, giro: 0, amp: 0 }));
     S.banner = null; S.textos = []; S.parts = []; S.prato = null;
     S.etapa = 'apanhar'; S.naTigela = Object.keys(S.tem).filter(k => S.tem[k]);
-    S.fofo.x = 200; S.fofo.face = 'normal';
+    S.fofo.x = W / 2; S.fofo.face = 'normal';
   }
 
   function desenhaListaFases() {
@@ -2033,6 +2107,7 @@
     CG.chama(sdk => sdk.game.loadingStart());
     await (document.fonts?.ready || Promise.resolve());
     for (const k in fundos) delete fundos[k];
+    for (const k in bases) delete bases[k];
     CG.chama(sdk => sdk.game.loadingStop());
     // no CrazyGames o jogo abre logo a jogar
     if (CG.ok && S.estado === 'inicio') iniciar(escolhida);

@@ -1521,7 +1521,11 @@
   function geraPoder() {
     const livres = Object.keys(PODERES).filter(k => S.poderes[k] <= 0 && !S.itens.some(it => it.tipo === k));
     if (!livres.length) return;
-    const tipo = livres[Math.floor(Math.random() * livres.length)];
+    // o escudo sai mais vezes (ainda mais nas fases com mais perigos ou depois de perder uma vida)
+    const F = faseAtual();
+    const peso = k => k === 'escudo' ? 3 + (F.maisPerigos || F.ressalta ? 1 : 0) + (S.vidas < 3 ? 1 : 0) : k === 'dobro' ? 1 : 1.5;
+    let r = Math.random() * livres.reduce((a, k) => a + peso(k), 0), tipo = livres[livres.length - 1];
+    for (const k of livres) { if ((r -= peso(k)) < 0) { tipo = k; break; } }
     const x = 50 + Math.random() * (W - 100);
     S.itens.push({ tipo, bx: x, x, y: 104, esc: 0, vy: 125, rot: 0, giro: 0, fase: Math.random() * 6.28, amp: faseAtual().balanca ? 18 : 0 });
   }
